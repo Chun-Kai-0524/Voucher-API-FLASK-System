@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  api:
+    build: .
+    container_name: voucher_api
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=development
+      - DATABASE_URL=postgresql://voucher_user:voucher_pass@db:5432/voucher_db
+      - SECRET_KEY=docker-secret-key-change-in-production
+    depends_on:
+      - db
+    volumes:
+      - ./app:/app/app
+    networks:
+      - voucher_network
+    restart: unless-stopped
+
+  db:
+    image: postgres:15-alpine
+    container_name: voucher_db
+    environment:
+      - POSTGRES_USER=voucher_user
+      - POSTGRES_PASSWORD=voucher_pass
+      - POSTGRES_DB=voucher_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - voucher_network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+
+networks:
+  voucher_network:
+    driver: bridge
+

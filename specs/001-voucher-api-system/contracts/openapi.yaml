@@ -1,0 +1,688 @@
+openapi: 3.0.3
+info:
+  title: Voucher Management API
+  description: |
+    優惠券管理系統 API - 提供優惠券的 CRUD 操作、查詢篩選和批次處理功能。
+    
+    **技術棧:**
+    - Python 3.11
+    - API-FLASK Framework
+    - SQLAlchemy 2.0 ORM
+    
+    **功能特點:**
+    - RESTful API 設計
+    - 完整的輸入驗證
+    - 支援分頁查詢
+    - 批次操作（加分項）
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@example.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:5000/api/v1
+    description: 本地開發環境
+  - url: https://api.example.com/v1
+    description: 生產環境
+
+tags:
+  - name: vouchers
+    description: 優惠券管理相關操作
+  - name: batch
+    description: 批次操作（加分項）
+
+paths:
+  /vouchers:
+    get:
+      tags:
+        - vouchers
+      summary: 查詢優惠券列表
+      description: |
+        查詢所有優惠券，支援多條件篩選和分頁。
+        
+        **篩選條件:**
+        - 名稱模糊搜尋
+        - 價格範圍
+        - 折扣百分比範圍
+        - 狀態
+        - 可用性
+        - 有效期範圍
+      operationId: listVouchers
+      parameters:
+        - name: page
+          in: query
+          description: 頁碼（從 1 開始）
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: per_page
+          in: query
+          description: 每頁數量
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: name
+          in: query
+          description: 優惠券名稱（模糊搜尋）
+          schema:
+            type: string
+        - name: min_price
+          in: query
+          description: 最低價格
+          schema:
+            type: number
+            format: decimal
+            minimum: 0
+        - name: max_price
+          in: query
+          description: 最高價格
+          schema:
+            type: number
+            format: decimal
+        - name: min_discount
+          in: query
+          description: 最低折扣百分比
+          schema:
+            type: number
+            format: decimal
+            minimum: 0
+            maximum: 100
+        - name: max_discount
+          in: query
+          description: 最高折扣百分比
+          schema:
+            type: number
+            format: decimal
+            minimum: 0
+            maximum: 100
+        - name: status
+          in: query
+          description: 狀態篩選
+          schema:
+            type: string
+            enum: [unused, used, expired]
+        - name: is_available
+          in: query
+          description: 是否可用
+          schema:
+            type: boolean
+        - name: valid_from
+          in: query
+          description: 有效期起始日期（ISO 8601）
+          schema:
+            type: string
+            format: date-time
+        - name: valid_to
+          in: query
+          description: 有效期結束日期（ISO 8601）
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: 成功返回優惠券列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Voucher'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+              examples:
+                success:
+                  value:
+                    data:
+                      - id: 1
+                        name: "新用戶註冊優惠券"
+                        price: 100.00
+                        discount_percentage: 20.00
+                        expiry_date: "2025-12-31T23:59:59Z"
+                        is_available: true
+                        status: "unused"
+                        created_at: "2025-11-14T10:00:00Z"
+                        updated_at: "2025-11-14T10:00:00Z"
+                        used_at: null
+                    pagination:
+                      page: 1
+                      per_page: 20
+                      total: 1
+                      pages: 1
+        '400':
+          description: 請求參數錯誤
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    
+    post:
+      tags:
+        - vouchers
+      summary: 創建優惠券
+      description: 創建一張新的優惠券
+      operationId: createVoucher
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VoucherCreate'
+            examples:
+              example1:
+                value:
+                  name: "黑色星期五優惠券"
+                  price: 500.00
+                  discount_percentage: 50.00
+                  expiry_date: "2025-11-30T23:59:59Z"
+      responses:
+        '201':
+          description: 優惠券創建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Voucher'
+        '400':
+          description: 請求驗證失敗
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+
+  /vouchers/{id}:
+    get:
+      tags:
+        - vouchers
+      summary: 查詢單一優惠券
+      description: 根據 ID 查詢優惠券詳細資訊
+      operationId: getVoucher
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 優惠券 ID
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 成功返回優惠券資訊
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Voucher'
+        '404':
+          description: 優惠券不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    
+    patch:
+      tags:
+        - vouchers
+      summary: 修改優惠券（部分更新）
+      description: |
+        修改優惠券資訊，支援部分欄位更新。
+        
+        **可修改欄位:**
+        - name
+        - price
+        - discount_percentage
+        - expiry_date
+        - is_available
+        - status
+      operationId: updateVoucher
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 優惠券 ID
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VoucherUpdate'
+            examples:
+              updateName:
+                summary: 修改名稱
+                value:
+                  name: "新的優惠券名稱"
+              updateStatus:
+                summary: 標記為已使用
+                value:
+                  status: "used"
+      responses:
+        '200':
+          description: 修改成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Voucher'
+        '400':
+          description: 請求驗證失敗或業務規則錯誤
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '404':
+          description: 優惠券不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    
+    delete:
+      tags:
+        - vouchers
+      summary: 刪除優惠券
+      description: |
+        刪除優惠券。
+        
+        **刪除規則:**
+        - 已使用的優惠券不可刪除
+        - 未使用和過期的優惠券可刪除
+      operationId: deleteVoucher
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 優惠券 ID
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: 刪除成功
+        '400':
+          description: 業務規則限制（如已使用的優惠券不可刪除）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: 優惠券不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /vouchers/batch:
+    post:
+      tags:
+        - batch
+      summary: 批次創建優惠券（加分項）
+      description: |
+        批次創建多張優惠券，支援大量資料處理（百萬級別）。
+        
+        **特性:**
+        - 使用 asyncio 並行處理
+        - 處理並發競爭問題
+        - 部分成功模式（部分失敗不影響成功的記錄）
+      operationId: batchCreateVouchers
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                vouchers:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/VoucherCreate'
+              required:
+                - vouchers
+            examples:
+              smallBatch:
+                summary: 小批次（3張）
+                value:
+                  vouchers:
+                    - name: "優惠券 1"
+                      price: 100.00
+                      discount_percentage: 10.00
+                      expiry_date: "2025-12-31T23:59:59Z"
+                    - name: "優惠券 2"
+                      price: 200.00
+                      discount_percentage: 20.00
+                      expiry_date: "2025-12-31T23:59:59Z"
+                    - name: "優惠券 3"
+                      price: 300.00
+                      discount_percentage: 30.00
+                      expiry_date: "2025-12-31T23:59:59Z"
+      responses:
+        '201':
+          description: 批次創建完成（可能部分失敗）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success_count:
+                    type: integer
+                    description: 成功創建的數量
+                  failure_count:
+                    type: integer
+                    description: 失敗的數量
+                  total:
+                    type: integer
+                    description: 總數量
+                  failures:
+                    type: array
+                    description: 失敗的記錄詳情
+                    items:
+                      type: object
+                      properties:
+                        index:
+                          type: integer
+                          description: 陣列索引
+                        error:
+                          type: string
+                          description: 錯誤訊息
+                        data:
+                          type: object
+                          description: 原始資料
+              examples:
+                allSuccess:
+                  value:
+                    success_count: 3
+                    failure_count: 0
+                    total: 3
+                    failures: []
+                partialSuccess:
+                  value:
+                    success_count: 2
+                    failure_count: 1
+                    total: 3
+                    failures:
+                      - index: 1
+                        error: "價格必須大於 0"
+                        data:
+                          name: "優惠券 2"
+                          price: -100.00
+                          discount_percentage: 20.00
+                          expiry_date: "2025-12-31T23:59:59Z"
+        '400':
+          description: 請求格式錯誤
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /vouchers/batch/update:
+    patch:
+      tags:
+        - batch
+      summary: 批次修改優惠券（加分項）
+      description: |
+        批次修改多張優惠券。
+        
+        **特性:**
+        - 使用 asyncio 並行處理
+        - 處理並發競爭問題
+        - 部分成功模式
+      operationId: batchUpdateVouchers
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                updates:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      data:
+                        $ref: '#/components/schemas/VoucherUpdate'
+                    required:
+                      - id
+                      - data
+              required:
+                - updates
+      responses:
+        '200':
+          description: 批次修改完成（可能部分失敗）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success_count:
+                    type: integer
+                  failure_count:
+                    type: integer
+                  total:
+                    type: integer
+                  failures:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        error:
+                          type: string
+        '400':
+          description: 請求格式錯誤
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    Voucher:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: 優惠券唯一識別碼
+          example: 1
+        name:
+          type: string
+          maxLength: 100
+          description: 優惠券名稱
+          example: "新用戶註冊優惠券"
+        price:
+          type: number
+          format: decimal
+          minimum: 0
+          description: 優惠券面額/原價
+          example: 100.00
+        discount_percentage:
+          type: number
+          format: decimal
+          minimum: 0
+          maximum: 100
+          description: 折扣百分比
+          example: 20.00
+        expiry_date:
+          type: string
+          format: date-time
+          description: 優惠券到期日期時間（UTC, ISO 8601）
+          example: "2025-12-31T23:59:59Z"
+        is_available:
+          type: boolean
+          description: 是否可用
+          example: true
+        status:
+          type: string
+          enum: [unused, used, expired]
+          description: 優惠券狀態
+          example: "unused"
+        created_at:
+          type: string
+          format: date-time
+          description: 創建時間（UTC, ISO 8601）
+          example: "2025-11-14T10:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: 最後修改時間（UTC, ISO 8601）
+          example: "2025-11-14T10:00:00Z"
+        used_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: 使用時間（UTC, ISO 8601），未使用時為 null
+          example: null
+      required:
+        - id
+        - name
+        - price
+        - discount_percentage
+        - expiry_date
+        - is_available
+        - status
+        - created_at
+        - updated_at
+
+    VoucherCreate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: 優惠券名稱
+          example: "黑色星期五優惠券"
+        price:
+          type: number
+          format: decimal
+          minimum: 0.01
+          description: 優惠券面額/原價
+          example: 500.00
+        discount_percentage:
+          type: number
+          format: decimal
+          minimum: 0
+          maximum: 100
+          description: 折扣百分比
+          example: 50.00
+        expiry_date:
+          type: string
+          format: date-time
+          description: 優惠券到期日期時間（ISO 8601）
+          example: "2025-11-30T23:59:59Z"
+        is_available:
+          type: boolean
+          default: true
+          description: 是否可用（選填，預設 true）
+          example: true
+      required:
+        - name
+        - price
+        - discount_percentage
+        - expiry_date
+
+    VoucherUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: 優惠券名稱
+          example: "更新後的優惠券名稱"
+        price:
+          type: number
+          format: decimal
+          minimum: 0.01
+          description: 優惠券面額/原價
+          example: 600.00
+        discount_percentage:
+          type: number
+          format: decimal
+          minimum: 0
+          maximum: 100
+          description: 折扣百分比
+          example: 60.00
+        expiry_date:
+          type: string
+          format: date-time
+          description: 優惠券到期日期時間（ISO 8601）
+          example: "2026-12-31T23:59:59Z"
+        is_available:
+          type: boolean
+          description: 是否可用
+          example: false
+        status:
+          type: string
+          enum: [unused, used, expired]
+          description: 優惠券狀態
+          example: "used"
+      description: 所有欄位皆為選填，只更新提供的欄位
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+          description: 當前頁碼
+          example: 1
+        per_page:
+          type: integer
+          description: 每頁數量
+          example: 20
+        total:
+          type: integer
+          description: 總記錄數
+          example: 100
+        pages:
+          type: integer
+          description: 總頁數
+          example: 5
+      required:
+        - page
+        - per_page
+        - total
+        - pages
+
+    Error:
+      type: object
+      properties:
+        message:
+          type: string
+          description: 錯誤訊息
+          example: "優惠券不存在"
+        code:
+          type: string
+          description: 錯誤代碼
+          example: "VOUCHER_NOT_FOUND"
+      required:
+        - message
+
+    ValidationError:
+      type: object
+      properties:
+        message:
+          type: string
+          description: 錯誤訊息
+          example: "請求驗證失敗"
+        errors:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+          description: 欄位驗證錯誤詳情
+          example:
+            name: ["名稱不可為空"]
+            price: ["價格必須大於 0"]
+      required:
+        - message
+        - errors
+
